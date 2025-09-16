@@ -1,26 +1,273 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #ffffff;
+  /* Seamless gradient background - covers full viewport */
+  --background-gradient: linear-gradient(180deg, #c2e9fb 0%, #e0d1f7 100%);
+  --background: var(--background-gradient);
+  --surface: rgba(255, 255, 255, 0.4); /* More transparent for seamless flow */
+  --surface-elevated: rgba(255, 255, 255, 0.6);
   --foreground: #171717;
+  --foreground-secondary: #404040;
+  --foreground-tertiary: #737373;
+
+  /* Brand colors using new solid colors */
+  --primary: #a6c1ee; /* Medium blue from attachment 3 */
+  --primary-hover: #8fb3e8;
+  --primary-foreground: #ffffff;
+  --secondary: #dde3fd; /* Light purple from attachment 3 */
+  --secondary-foreground: #171717;
+  --accent: #a6c1ee;
+  --accent-foreground: #ffffff;
+
+  /* UI colors */
+  --card: rgba(255, 255, 255, 0.8);
+  --card-foreground: #171717;
+  --popover: rgba(255, 255, 255, 0.95);
+  --popover-foreground: #171717;
+  --muted: rgba(245, 245, 245, 0.6);
+  --muted-foreground: #737373;
+  --border: rgba(221, 227, 253, 0.4);
+  --border-subtle: rgba(240, 244, 255, 0.3);
+  --input: rgba(250, 250, 250, 0.8);
+  --ring: #a6c1ee;
+
+  /* Chat specific colors - translucent with backdrop blur */
+  --chat-user-bubble: rgba(166, 193, 238, 0.9); /* Semi-transparent medium blue */
+  --chat-assistant-bubble: rgba(221, 227, 253, 0.8); /* Semi-transparent light purple */
+  --chat-composer-bg: rgba(255, 255, 255, 0.9);
+
+  /* Sidebar colors - more transparent */
+  --sidebar: rgba(250, 250, 250, 0.3);
+  --sidebar-foreground: #171717;
+  --sidebar-primary: #a6c1ee;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(221, 227, 253, 0.6);
+  --sidebar-accent-foreground: #171717;
+  --sidebar-border: rgba(221, 227, 253, 0.2);
+  --sidebar-ring: #a6c1ee;
+
+  /* Design tokens */
+  --radius: 0.875rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.5rem;
+  --radius-pill: 9999px;
+
+  /* Ultra-soft shadows with more blur for floating effect */
+  --shadow-xs: 0 2px 25px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 4px 30px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 8px 40px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 16px 60px rgba(0, 0, 0, 0.12);
+
+  /* Destructive */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  /* Chart colors */
+  --chart-1: #8b5cf6;
+  --chart-2: #f472b6;
+  --chart-3: #38bdf8;
+  --chart-4: #f59e95;
+  --chart-5: #a78bfa;
+
+  /* Font mappings */
+  --font-quicksand: "Quicksand", sans-serif;
+}
+
+.dark {
+  /* Dark theme with smooth navy to purple gradient */
+  --background-gradient: linear-gradient(180deg, #1a1a2e 0%, #2d1b69 100%);
+  --background: var(--background-gradient);
+  --surface: rgba(38, 38, 38, 0.4);
+  --surface-elevated: rgba(64, 64, 64, 0.6);
+  --foreground: #fafafa;
+  --foreground-secondary: #d4d4d4;
+  --foreground-tertiary: #a3a3a3;
+
+  /* Brand colors for dark mode */
+  --primary: #a6c1ee;
+  --primary-hover: #c4d5f0;
+  --primary-foreground: #1a1a2e;
+  --secondary: #dde3fd;
+  --secondary-foreground: #1a1a2e;
+  --accent: #a6c1ee;
+  --accent-foreground: #1a1a2e;
+
+  /* UI colors */
+  --card: rgba(38, 38, 38, 0.8);
+  --card-foreground: #fafafa;
+  --popover: rgba(38, 38, 38, 0.95);
+  --popover-foreground: #fafafa;
+  --muted: rgba(64, 64, 64, 0.6);
+  --muted-foreground: #a3a3a3;
+  --border: rgba(64, 64, 64, 0.4);
+  --border-subtle: rgba(38, 38, 38, 0.3);
+  --input: rgba(64, 64, 64, 0.8);
+  --ring: #a6c1ee;
+
+  /* Chat specific colors for dark mode - maintain contrast */
+  --chat-user-bubble: rgba(166, 193, 238, 0.9);
+  --chat-assistant-bubble: rgba(221, 227, 253, 0.15); /* Lower opacity for dark mode */
+  --chat-composer-bg: rgba(38, 38, 38, 0.9);
+
+  /* Sidebar colors */
+  --sidebar: rgba(23, 23, 23, 0.3);
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #a6c1ee;
+  --sidebar-primary-foreground: #1a1a2e;
+  --sidebar-accent: rgba(64, 64, 64, 0.6);
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: rgba(64, 64, 64, 0.2);
+  --sidebar-ring: #a6c1ee;
+
+  /* Destructive */
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+
+  /* Chart colors */
+  --chart-1: #a78bfa;
+  --chart-2: #f8a5d8;
+  --chart-3: #7dd3fc;
+  --chart-4: #f9c5c0;
+  --chart-5: #c4b5fd;
 }
 
 @theme inline {
+  --font-sans: var(--font-quicksand);
+  --font-display: var(--font-quicksand);
+
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-foreground-tertiary: var(--foreground-tertiary);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-pill: var(--radius-pill);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Chat specific colors */
+  --color-chat-user-bubble: var(--chat-user-bubble);
+  --color-chat-assistant-bubble: var(--chat-assistant-bubble);
+  --color-chat-composer-bg: var(--chat-composer-bg);
+
+  /* Custom shadow utilities */
+  --shadow-monument-xs: var(--shadow-xs);
+  --shadow-monument-sm: var(--shadow-sm);
+  --shadow-monument-md: var(--shadow-md);
+  --shadow-monument-lg: var(--shadow-lg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    /* Fixed gradient background that doesn't scroll */
+    background: var(--background-gradient);
+    background-attachment: fixed;
+    background-size: 100% 100vh;
+    background-repeat: no-repeat;
+    min-height: 100vh;
+  }
+
+  body {
+    @apply text-foreground font-sans antialiased;
+    /* Remove body background to let html gradient show through */
+    background: transparent;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    min-height: 100vh;
+  }
+
+  /* Custom shadow utilities */
+  .shadow-monument-xs {
+    box-shadow: var(--shadow-monument-xs);
+  }
+  .shadow-monument-sm {
+    box-shadow: var(--shadow-monument-sm);
+  }
+  .shadow-monument-md {
+    box-shadow: var(--shadow-monument-md);
+  }
+  .shadow-monument-lg {
+    box-shadow: var(--shadow-monument-lg);
+  }
+
+  /* Chat bubble utilities with backdrop blur for floating effect */
+  .chat-user-bubble {
+    background: var(--color-chat-user-bubble);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .chat-assistant-bubble {
+    background: var(--color-chat-assistant-bubble);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    /* Ensure text contrast in dark mode */
+    color: var(--foreground);
+  }
+
+  /* Action chips use same color as assistant bubbles */
+  .action-chip {
+    background: var(--color-chat-assistant-bubble);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--color-border);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Utility for seamless gradient containers */
+  .gradient-container {
+    background: transparent;
+  }
+
+  /* High-DPI gradient smoothing */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    html {
+      background-image: var(--background-gradient);
+      background-size: 100% 100vh;
+    }
+  }
 }

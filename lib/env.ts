@@ -10,3 +10,7 @@ export const NOTION_DB_PROJECTS = process.env.NOTION_DB_PROJECTS;
 export const NOTION_DB_TASKS = process.env.NOTION_DB_TASKS;
 export const NOTION_DB_JOURNAL = process.env.NOTION_DB_JOURNAL;
 export const NOTION_DB_CONTENT = process.env.NOTION_DB_CONTENT;
+
+// Database URLs
+export const SUPABASE_DB_URL = process.env.SUPABASE_DB_URL;
+export const SUPABASE_DB_POOLER_URL = process.env.SUPABASE_DB_POOLER_URL;

@@ -1,5 +1,13 @@
+export const runtime = "nodejs"; // Ensure Node.js runtime for PostgreSQL
+
 import { NextRequest, NextResponse } from "next/server";
 import { parseAction, handleAction } from "@/lib/actions";
+import {
+  createThread,
+  saveMessage,
+  saveToolExecution,
+  listMessages
+} from "@/lib/db";
 
 // Get LLM client (adjust import based on your LLM setup)
 async function callLLM(userMessage: string, isRepair = false, conversationHistory: any[] = [], userTimezone = 'UTC'): Promise<string> {
@@ -130,9 +138,20 @@ IMPORTANT: If the conversation shows a previous failed request (like project not
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+
   try {
     const body = await request.json();
-    const { message, conversationHistory, userTimezone } = body;
+    const { message, conversationHistory, userTimezone, threadId: providedThreadId, userId } = body;
+
+    // Thread management - create if not provided
+    let threadId = providedThreadId;
+    if (!threadId) {
+      threadId = await createThread({
+        userId,
+        title: message.slice(0, 50) + (message.length > 50 ? "..." : "")
+      });
+    }
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({
@@ -141,15 +160,39 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Save user message to database
+    await saveMessage({ threadId, role: "user", content: message });
+
     // Step 1: Call LLM to get action and params
     console.log('Calling LLM with message:', message);
     console.log('Conversation history:', conversationHistory);
-    
-    // Get last few messages for context (limit to prevent token overflow)
-    const recentHistory = conversationHistory ? conversationHistory.slice(-6) : [];
+
+    // Get conversation history from database if not provided
+    let recentHistory = conversationHistory;
+    if (!recentHistory && threadId) {
+      const messages = await listMessages(threadId, 6);
+      recentHistory = messages.map(msg => ({
+        role: msg.role,
+        content: msg.role === 'assistant' ?
+          (() => {
+            try {
+              const parsed = JSON.parse(msg.content);
+              return typeof parsed === 'object' ? JSON.stringify(parsed) : msg.content;
+            } catch {
+              return msg.content;
+            }
+          })() : msg.content
+      }));
+    } else {
+      // Limit provided history to prevent token overflow
+      recentHistory = recentHistory ? recentHistory.slice(-6) : [];
+    }
     
     const llmResponse = await callLLM(message, false, recentHistory, userTimezone || 'UTC');
     console.log('LLM response:', llmResponse);
+
+    // Save LLM response to database
+    await saveMessage({ threadId, role: "assistant", content: llmResponse });
 
     // Step 2: Parse the LLM response
     let parseResult = parseAction(llmResponse);
@@ -228,19 +271,34 @@ export async function POST(request: NextRequest) {
     // Step 5: Handle the parsed action
     console.log('Handling action:', parseResult.data);
     const handleResult = await handleAction(parseResult.data);
+    const executionTime = Date.now() - startTime;
+
+    // Save action execution audit trail
+    await saveToolExecution({
+      threadId,
+      toolName: parseResult.data.action,
+      args: parseResult.data.params || {},
+      result: handleResult.success ? handleResult.data : { error: handleResult.error },
+      status: handleResult.success ? "ok" : "error",
+      executionTimeMs: executionTime
+    });
 
     // Step 6: Return the result
     if (handleResult.success) {
       return NextResponse.json({
         success: true,
         message: `Successfully executed ${parseResult.data.action}`,
-        data: handleResult.data
+        data: handleResult.data,
+        threadId,
+        executionTime
       });
     } else {
       return NextResponse.json({
         success: false,
         error: handleResult.error,
-        missingFields: 'missingFields' in handleResult ? handleResult.missingFields : undefined
+        missingFields: 'missingFields' in handleResult ? handleResult.missingFields : undefined,
+        threadId,
+        executionTime
       }, { status: 400 });
     }
 

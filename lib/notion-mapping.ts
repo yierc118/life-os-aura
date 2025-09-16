@@ -180,7 +180,6 @@ export function buildContentProperties(p: {
 export const JournalProps = {
   Title: "Title",
   Type: "Type",
-  Content: "Content",
   Date: "Date",
   Project: "Project",
   LifeDomain: "Life Domains",
@@ -189,8 +188,7 @@ export const JournalProps = {
 
 export function buildJournalProperties(p: {
   title: string;
-  type: "Note"|"Meeting"|"Decision"|"Daily"|"Weekly";
-  content: NotionText;
+  type: "Note"|"Idea"|"Research";
   date?: string;              // ISO
   projectId?: string;
   lifeDomainId?: string;
@@ -199,8 +197,7 @@ export function buildJournalProperties(p: {
   return {
     [JournalProps.Title]: { title: [{ text: { content: p.title } }] },
     [JournalProps.Type]:  { select: { name: p.type } },
-    [JournalProps.Content]: { rich_text: [{ text: { content: p.content } }] },
-    ...(p.date ? { [JournalProps.Date]: { date: { start: p.date } } } : {}),
+    [JournalProps.Date]: { date: { start: p.date || new Date().toISOString().split('T')[0] } },
     ...(p.projectId ? { [JournalProps.Project]: { relation: [{ id: p.projectId }] } } : {}),
     ...(p.lifeDomainId ? { [JournalProps.LifeDomain]: { relation: [{ id: p.lifeDomainId }] } } : {}),
     ...(p.actionItemIds?.length ? { [JournalProps.ActionItems]: { relation: p.actionItemIds.map(id => ({ id })) } } : {}),

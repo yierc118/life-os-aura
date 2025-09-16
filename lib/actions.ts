@@ -204,10 +204,10 @@ async function findProjectByName(projectName: string): Promise<string | null> {
   try {
     console.log(`Searching for project: "${projectName}"`);
     console.log(`DB.PROJECTS = "${DB.PROJECTS}"`);
-    
-    const searchResult = await callTool('NOTION_SEARCH_NOTION_PAGE', {
-      query: projectName,
-      filter: 'page'
+    console.log(`DB.TASKS = "${DB.TASKS}"`);
+
+    const searchResult = await callTool('NOTION_QUERY_DATABASE', {
+      database_id: DB.PROJECTS!
     });
 
     if (searchResult.isError || !searchResult.content || !Array.isArray(searchResult.content)) {
@@ -217,117 +217,79 @@ async function findProjectByName(projectName: string): Promise<string | null> {
     const normalizedQuery = projectName.toLowerCase().trim();
     let bestMatch: { id: string; score: number } | null = null;
 
-    // Parse the search results to find the best matching project
-    console.log('searchResult.content:', JSON.stringify(searchResult.content, null, 2));
-    
-    for (const item of searchResult.content) {
-      console.log('Processing item:', item.type, 'content length:', item.text?.length);
-      if (item.type === 'text') {
+    // Parse the query results to find the best matching project
+    console.log('searchResult:', JSON.stringify(searchResult, null, 2));
+
+    let results = [];
+    if (searchResult.results && Array.isArray(searchResult.results)) {
+      results = searchResult.results;
+    } else if (searchResult.content && Array.isArray(searchResult.content)) {
+      const textContent = searchResult.content.find((item: any) => item.type === 'text');
+      if (textContent && textContent.text) {
         try {
-          const data = JSON.parse(item.text);
-          console.log('Parsed data keys:', Object.keys(data));
+          const data = JSON.parse(textContent.text);
           if (data.data?.response_data?.results && Array.isArray(data.data.response_data.results)) {
-            console.log(`Found ${data.data.response_data.results.length} results in response_data format`);
-            for (const result of data.data.response_data.results) {
-              console.log(`Checking result: ${result.id}, object: ${result.object}, parent DB: ${result.parent?.database_id}, expected DB: ${DB.PROJECTS}`);
-              if (result.object === 'page' && result.parent?.database_id === DB.PROJECTS) {
-                const projectTitle = result.properties?.Name?.title?.[0]?.plain_text;
-                if (projectTitle) {
-                  const normalizedTitle = projectTitle.toLowerCase().trim();
-                  
-                  console.log(`Comparing "${normalizedQuery}" with "${normalizedTitle}"`);
-                  
-                  // Calculate match score (higher is better)
-                  let score = 0;
-                  
-                  // Exact match gets highest score
-                  if (normalizedTitle === normalizedQuery) {
-                    score = 100;
-                  }
-                  // Contains query as substring
-                  else if (normalizedTitle.includes(normalizedQuery)) {
-                    score = 80;
-                  }
-                  // Query contains title (reverse substring)
-                  else if (normalizedQuery.includes(normalizedTitle)) {
-                    score = 70;
-                  }
-                  // Fuzzy word matching
-                  else {
-                    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 0);
-                    const titleWords = normalizedTitle.split(/\s+/).filter(w => w.length > 0);
-                    let matchingWords = 0;
-                    
-                    for (const queryWord of queryWords) {
-                      for (const titleWord of titleWords) {
-                        if (queryWord === titleWord || 
-                            queryWord.includes(titleWord) || 
-                            titleWord.includes(queryWord)) {
-                          matchingWords++;
-                          break;
-                        }
-                      }
-                    }
-                    
-                    if (matchingWords > 0) {
-                      score = (matchingWords / Math.max(queryWords.length, titleWords.length)) * 60;
-                    }
-                  }
-                  
-                  console.log(`Project "${projectTitle}" scored ${score}`);
-                  
-                  if (score > 0 && (!bestMatch || score > bestMatch.score)) {
-                    bestMatch = { id: result.id, score };
-                  }
-                }
-              }
-            }
-          }
-          // Also check the old format for backward compatibility  
-          else if (data.results && Array.isArray(data.results)) {
-            console.log(`Found ${data.results.length} results in old format`);
-            for (const result of data.results) {
-              if (result.object === 'page' && result.parent?.database_id === DB.PROJECTS) {
-                const projectTitle = result.properties?.Name?.title?.[0]?.plain_text;
-                if (projectTitle) {
-                  const normalizedTitle = projectTitle.toLowerCase().trim();
-                  
-                  console.log(`Comparing "${normalizedQuery}" with "${normalizedTitle}" (old format)`);
-                  
-                  let score = 0;
-                  if (normalizedTitle === normalizedQuery) score = 100;
-                  else if (normalizedTitle.includes(normalizedQuery)) score = 80;
-                  else if (normalizedQuery.includes(normalizedTitle)) score = 70;
-                  else {
-                    const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 0);
-                    const titleWords = normalizedTitle.split(/\s+/).filter(w => w.length > 0);
-                    let matchingWords = 0;
-                    
-                    for (const queryWord of queryWords) {
-                      for (const titleWord of titleWords) {
-                        if (queryWord === titleWord || queryWord.includes(titleWord) || titleWord.includes(queryWord)) {
-                          matchingWords++;
-                          break;
-                        }
-                      }
-                    }
-                    
-                    if (matchingWords > 0) {
-                      score = (matchingWords / Math.max(queryWords.length, titleWords.length)) * 60;
-                    }
-                  }
-                  
-                  console.log(`Project "${projectTitle}" scored ${score} (old format)`);
-                  
-                  if (score > 0 && (!bestMatch || score > bestMatch.score)) {
-                    bestMatch = { id: result.id, score };
-                  }
-                }
-              }
-            }
+            results = data.data.response_data.results;
           }
         } catch (parseError) {
-          console.error('Error parsing search result:', parseError);
+          console.error('Error parsing content:', parseError);
+        }
+      }
+    }
+
+    console.log(`Found ${results.length} projects to search through`);
+
+    for (const result of results) {
+      console.log(`Checking project: ${result.id}, name: ${result.properties?.Name?.title?.[0]?.plain_text}`);
+      if (result.object === 'page' && result.parent?.database_id === DB.PROJECTS) {
+        const projectTitle = result.properties?.Name?.title?.[0]?.plain_text;
+        if (projectTitle) {
+          const normalizedTitle = projectTitle.toLowerCase().trim();
+
+          console.log(`Comparing "${normalizedQuery}" with "${normalizedTitle}"`);
+
+          // Calculate match score (higher is better)
+          let score = 0;
+
+          // Exact match gets highest score
+          if (normalizedTitle === normalizedQuery) {
+            score = 100;
+          }
+          // Contains query as substring
+          else if (normalizedTitle.includes(normalizedQuery)) {
+            score = 80;
+          }
+          // Query contains title (reverse substring)
+          else if (normalizedQuery.includes(normalizedTitle)) {
+            score = 70;
+          }
+          // Fuzzy word matching
+          else {
+            const queryWords = normalizedQuery.split(/\s+/).filter(w => w.length > 0);
+            const titleWords = normalizedTitle.split(/\s+/).filter(w => w.length > 0);
+            let matchingWords = 0;
+
+            for (const queryWord of queryWords) {
+              for (const titleWord of titleWords) {
+                if (queryWord === titleWord ||
+                    queryWord.includes(titleWord) ||
+                    titleWord.includes(queryWord)) {
+                  matchingWords++;
+                  break;
+                }
+              }
+            }
+
+            if (matchingWords > 0) {
+              score = (matchingWords / Math.max(queryWords.length, titleWords.length)) * 60;
+            }
+          }
+
+          console.log(`Project "${projectTitle}" scored ${score}`);
+
+          if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+            bestMatch = { id: result.id, score };
+          }
         }
       }
     }
@@ -468,27 +430,71 @@ export async function createTask(params: {
 }
 
 // Log Note (Journal) Action
-export function logNote(params: {
+export async function logNote(params: {
   title: string;
-  type: "Note" | "Meeting" | "Decision" | "Daily" | "Weekly";
-  content: NotionText;
+  type: "Note" | "Idea" | "Research";
+  content?: NotionText;
   date?: string;
   projectId?: string;
+  projectName?: string;
   lifeDomainId?: string;
-}): ActionResult<NotionActionPayload> {
+  actionItemIds?: string[];
+  taskNames?: string[];
+}): Promise<ActionResult<NotionActionPayload & { content?: string }>> {
   try {
+    console.log('logNote called with params:', params);
     assertDbIds();
-    
-    const validation = validateRequired(params, ['title', 'type', 'content']);
-    if (!validation.success) return validation;
+    console.log('DB.JOURNAL:', DB.JOURNAL);
 
-    const properties = buildJournalProperties(params);
-    
+    const validation = validateRequired(params, ['title', 'type']);
+    if (!validation.success) {
+      console.log('Validation failed:', validation);
+      return validation;
+    }
+
+    // Resolve project ID if project name is provided
+    let resolvedProjectId = params.projectId;
+
+    if (!resolvedProjectId && params.projectName) {
+      resolvedProjectId = await findProjectByName(params.projectName);
+      if (!resolvedProjectId) {
+        return {
+          success: false,
+          error: `Could not find a project matching "${params.projectName}". Please check the project name or provide a specific project ID.`,
+          missingFields: ['projectId']
+        };
+      }
+    }
+
+    // Resolve task IDs if task names are provided
+    let resolvedActionItemIds = params.actionItemIds || [];
+
+    if (params.taskNames && params.taskNames.length > 0) {
+      for (const taskName of params.taskNames) {
+        const taskId = await findTaskByName(taskName);
+        if (taskId) {
+          resolvedActionItemIds.push(taskId);
+        } else {
+          console.warn(`Could not find task matching "${taskName}"`);
+        }
+      }
+    }
+
+    const properties = buildJournalProperties({
+      ...params,
+      projectId: resolvedProjectId,
+      actionItemIds: resolvedActionItemIds.length > 0 ? resolvedActionItemIds : undefined
+    });
+
+    console.log('Built journal properties:', properties);
+    console.log('Returning logNote result with database_id:', DB.JOURNAL);
+
     return {
       success: true,
       data: {
         properties,
-        database_id: DB.JOURNAL!
+        database_id: DB.JOURNAL!,
+        content: params.content
       }
     };
   } catch (error) {
@@ -840,19 +846,49 @@ export function updateContent(params: {
 }
 
 // Update Journal Entry Action
-export function updateJournal(params: {
+export async function updateJournal(params: {
   journalId: string;
   title?: string;
-  type?: "Note"|"Meeting"|"Decision"|"Daily"|"Weekly";
+  type?: "Note"|"Idea"|"Research";
   content?: NotionText;
   date?: string;
   projectId?: string;
+  projectName?: string;
   lifeDomainId?: string;
   actionItemIds?: string[];
-}): ActionResult<NotionUpdatePayload> {
+  taskNames?: string[];
+}): Promise<ActionResult<NotionUpdatePayload>> {
   try {
     const validation = validateRequired(params, ['journalId']);
     if (!validation.success) return validation;
+
+    // Resolve project ID if project name is provided
+    let resolvedProjectId = params.projectId;
+
+    if (!resolvedProjectId && params.projectName) {
+      resolvedProjectId = await findProjectByName(params.projectName);
+      if (!resolvedProjectId) {
+        return {
+          success: false,
+          error: `Could not find a project matching "${params.projectName}". Please check the project name or provide a specific project ID.`,
+          missingFields: ['projectId']
+        };
+      }
+    }
+
+    // Resolve task IDs if task names are provided
+    let resolvedActionItemIds = params.actionItemIds || [];
+
+    if (params.taskNames && params.taskNames.length > 0) {
+      for (const taskName of params.taskNames) {
+        const taskId = await findTaskByName(taskName);
+        if (taskId) {
+          resolvedActionItemIds.push(taskId);
+        } else {
+          console.warn(`Could not find task matching "${taskName}"`);
+        }
+      }
+    }
 
     const updateProperties: Record<string, any> = {};
 
@@ -862,20 +898,17 @@ export function updateJournal(params: {
     if (params.type) {
       updateProperties[JournalProps.Type] = { select: { name: params.type } };
     }
-    if (params.content) {
-      updateProperties[JournalProps.Content] = { rich_text: [{ text: { content: params.content } }] };
-    }
     if (params.date) {
       updateProperties[JournalProps.Date] = { date: { start: params.date } };
     }
-    if (params.projectId) {
-      updateProperties[JournalProps.Project] = { relation: [{ id: params.projectId }] };
+    if (resolvedProjectId) {
+      updateProperties[JournalProps.Project] = { relation: [{ id: resolvedProjectId }] };
     }
     if (params.lifeDomainId) {
       updateProperties[JournalProps.LifeDomain] = { relation: [{ id: params.lifeDomainId }] };
     }
-    if (params.actionItemIds?.length) {
-      updateProperties[JournalProps.ActionItems] = { relation: params.actionItemIds.map(id => ({ id })) };
+    if (resolvedActionItemIds?.length) {
+      updateProperties[JournalProps.ActionItems] = { relation: resolvedActionItemIds.map(id => ({ id })) };
     }
 
     return {
@@ -964,6 +997,7 @@ export async function handleAction(parsedAction: ParsedAction): Promise<ActionRe
     let isUpdateAction = false;
 
     // Route to appropriate builder
+    console.log('handleAction called with action:', action);
     switch (action) {
       case 'createProject':
         builderResult = createProject(params as any);
@@ -972,7 +1006,9 @@ export async function handleAction(parsedAction: ParsedAction): Promise<ActionRe
         builderResult = await createTask(params as any);
         break;
       case 'logNote':
-        builderResult = logNote(params as any);
+        console.log('Calling logNote with params:', params);
+        builderResult = await logNote(params as any);
+        console.log('logNote result:', builderResult);
         break;
       case 'createContent':
         builderResult = createContent(params as any);
@@ -990,7 +1026,7 @@ export async function handleAction(parsedAction: ParsedAction): Promise<ActionRe
         isUpdateAction = true;
         break;
       case 'updateJournal':
-        builderResult = updateJournal(params as any);
+        builderResult = await updateJournal(params as any);
         isUpdateAction = true;
         break;
       case 'createCalendarEvent':
@@ -1037,10 +1073,17 @@ export async function handleAction(parsedAction: ParsedAction): Promise<ActionRe
       }
 
       // Step 1: Create basic page with title only
+      console.log('Creating Notion page with:', {
+        parent_id: createData.database_id,
+        title: title
+      });
+
       const createResult = await callTool('NOTION_CREATE_NOTION_PAGE', {
         parent_id: createData.database_id,
         title: title
       });
+
+      console.log('Page creation result:', JSON.stringify(createResult, null, 2));
 
       // Step 2: Extract the created page ID and update with all properties
       let pageId: string | undefined;
@@ -1075,23 +1118,60 @@ export async function handleAction(parsedAction: ParsedAction): Promise<ActionRe
       delete updateProperties.Name;
       delete updateProperties.Title;
 
-      // Only update if there are additional properties to set
+      // Update properties if there are any
+      let updateResult;
       if (Object.keys(updateProperties).length > 0) {
-        const updateResult = await callTool('NOTION_UPDATE_PAGE', {
+        console.log('Updating page properties:', {
           page_id: pageId,
           properties: updateProperties
         });
 
-        // Return the update result as the final result
-        mcpResult = {
-          createResult,
-          updateResult,
-          pageId
-        };
-      } else {
-        // No additional properties to update
-        mcpResult = createResult;
+        try {
+          updateResult = await callTool('NOTION_UPDATE_PAGE', {
+            page_id: pageId,
+            properties: updateProperties
+          });
+          console.log('Property update result:', JSON.stringify(updateResult, null, 2));
+        } catch (updateError) {
+          console.error('Failed to update page properties:', updateError);
+          throw updateError;
+        }
       }
+
+      // Step 3.5: Add content to page body if this is a journal entry and has content
+      let contentResult;
+      console.log('Checking content addition for action:', action);
+      console.log('createData has content?', 'content' in createData);
+      console.log('createData.content value:', createData.content);
+
+      if (action === 'logNote' && 'content' in createData && createData.content) {
+        console.log('Adding content to journal page...');
+        try {
+          contentResult = await callTool('NOTION_ADD_MULTIPLE_PAGE_CONTENT', {
+            parent_block_id: pageId,
+            content_blocks: [
+              {
+                content_block: {
+                  type: 'text',
+                  content: createData.content
+                }
+              }
+            ]
+          });
+          console.log('Content append result:', contentResult);
+        } catch (contentError) {
+          console.error('Failed to append content to journal page:', contentError);
+          // Don't fail the entire operation if content append fails
+        }
+      }
+
+      // Return the combined results
+      mcpResult = {
+        createResult,
+        ...(updateResult && { updateResult }),
+        ...(contentResult && { contentResult }),
+        pageId
+      };
     }
 
     return {

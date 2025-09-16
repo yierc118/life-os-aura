@@ -66,14 +66,14 @@ Actions available:
 NOTION CREATE ACTIONS:
 - createProject: requires "name", optional: "lifeDomainId", "flagship" (true/false), "status", "due", "dod", "kpi", "notes"
 - createTask: requires "name", "projectId" OR "projectName", "status", "priority", "due", optional: "shippable" (true/false), "notes"
-- logNote: requires "title", "type" (Note|Meeting|Decision|Daily|Weekly), "content", optional: "date", "projectId", "lifeDomainId"
+- logNote: requires "title", "type" (Note|Idea|Research), "content" (extract from user's message - everything after title/with content/etc.), optional: "date", "projectId" OR "projectName", "lifeDomainId", "actionItemIds" OR "taskNames". Always ask user if they want to link to projects or tasks.
 - createContent: requires "title", optional: "type", "tags", "projectId", "lifeDomainId", "date", "body"
 
 FIELD OPTIONS (must match existing Notion database selections):
 - Task priority: EXACTLY "P0 - Critical", "P1 - High", "P2 - Medium", "P3 - Low" - use these exact strings only
 - Task status: EXACTLY "Next", "Blocked", "Doing", "Verify", "Done" - use these exact strings only, DO NOT create new status values
 - Project status: Use existing project status options from Notion (e.g., "In Build", "Planning", "Completed")
-- Note type: Note, Meeting, Decision, Daily, Weekly
+- Note type: Note, Idea, Research
 - Boolean fields: true or false only
 
 CRITICAL FIELD VALIDATION RULES:
@@ -92,6 +92,7 @@ IMPORTANT PRIORITY RULES:
 
 IMPORTANT RULES:
 - For createTask action: ALWAYS require Name, Project (projectId OR projectName), Status, Priority, and Due date - if ANY of these are missing, use "MISSING_INFO"
+- For logNote action: After creating the basic journal entry, ALWAYS ask the user if they want to link it to any projects or tasks. Use prompts like "Would you like to link this journal entry to any projects or tasks?"
 - For updateCalendarEvent action: PREFER eventName over eventId. If user mentions updating a calendar event by name, use "eventName" field instead of "eventId"
 - Only include optional fields that are mentioned or clearly implied by the user
 - Do NOT request optional fields unless the user specifically mentions them
@@ -109,11 +110,22 @@ ACTION CONTINUITY RULES:
 - ONLY start a new action type if user clearly requests something entirely different (e.g. "instead, create a calendar event")
 - If you must change action type, the user should be explicitly asking for something completely different, not just providing clarification
 
+JOURNAL LINKING RULES:
+- For logNote: ALWAYS ask user about project/task linking if not provided initially - DO NOT create incomplete journal entries
+- If user says "no", "create it as-is", "without links", etc., then proceed with logNote action without project/task fields
+- If user provides project or task names in response to linking question, include them in the logNote action
+- Use projectName and taskNames parameters to allow fuzzy matching
+
+CONTENT EXTRACTION RULES:
+- For logNote: ALWAYS extract content from user's message. Look for patterns like "log [title] with content [content]", "journal entry: [content]", or any descriptive text after the title
+- If user just says "log daily journal" without content, set content to a brief summary or ask for content
+- Content should capture the essence of what the user wants to record
+
 NOTION UPDATE ACTIONS:
 - updateTask: requires "taskId" OR "taskName", optional: "name", "projectId", "status", "priority", "due", "shippable", "notes"
 - updateProject: requires "projectId", optional: "name", "lifeDomainId", "flagship", "status", "due", "dod", "kpi", "notes"
 - updateContent: requires "contentId", optional: "title", "type", "tags", "projectId", "lifeDomainId", "date", "body"
-- updateJournal: requires "journalId", optional: "title", "type", "content", "date", "projectId", "lifeDomainId", "actionItemIds"
+- updateJournal: requires "journalId", optional: "title", "type" (Note|Idea|Research), "date", "projectId" OR "projectName", "lifeDomainId", "actionItemIds" OR "taskNames"
 
 GOOGLE CALENDAR ACTIONS:
 - createCalendarEvent: requires "title", "startDateTime" (ISO 8601), "endDateTime" (ISO 8601), optional: "description", "location", "attendees" (array of emails), "timeZone" (default: user's timezone), "reminderMinutes"
@@ -229,19 +241,42 @@ export async function POST(request: NextRequest) {
     // Step 4: Check for MISSING_INFO values and provide user-friendly prompts
     const missingInfoFields = [];
     const params = parseResult.data.params || {};
-    
+
     for (const [key, value] of Object.entries(params)) {
       if (value === "MISSING_INFO") {
         missingInfoFields.push(key);
       }
     }
 
+    // Step 4.5: Special handling for journal entries - prompt for project/task linking if not provided
+    if (parseResult.data.action === 'logNote') {
+      const hasProjectLink = params.projectId || params.projectName;
+      const hasTaskLink = params.actionItemIds || params.taskNames;
+
+      // Check if user is responding to a previous follow-up prompt
+      const isRespondingToFollowUp = recentHistory && recentHistory.some(msg =>
+        msg.role === 'assistant' &&
+        msg.content.includes('Would you like to link this journal entry to any projects or tasks?')
+      );
+
+      // Only prompt if no links AND not responding to previous prompt
+      if (!hasProjectLink && !hasTaskLink && !isRespondingToFollowUp) {
+        return NextResponse.json({
+          success: false,
+          error: `I can create the journal entry "${params.title || 'Untitled'}" for you.`,
+          userPrompt: `Would you like to link this journal entry to any projects or tasks? You can:\n\n1. Say "no" or "create it as-is" to create the journal entry without links\n2. Specify project names or task names to link them\n\nFor example: "Link it to project X and task Y" or just "no, create it"`
+        }, { status: 400 });
+      }
+    }
+
     if (missingInfoFields.length > 0) {
       const fieldPrompts = {
         projectId: "Which project should this task be added to? Please provide the project ID.",
-        projectName: "Which project should this task be added to? Please provide the project name.",
+        projectName: "Which project should this be linked to? Please provide the project name.",
         taskId: "Which task should be updated? Please provide the task ID.",
         taskName: "Which task should be updated? Please provide the task name.",
+        taskNames: "Which tasks are related to this journal entry? Please provide task names (comma-separated).",
+        actionItemIds: "Which tasks are action items for this journal entry? Please provide task IDs.",
         eventId: "Which calendar event should be updated? Please provide the event ID.",
         eventName: "Which calendar event should be updated? Please provide the event name.",
         lifeDomainId: "Which life domain does this belong to? (e.g., Health, Work, Personal, etc.)",
@@ -251,7 +286,7 @@ export async function POST(request: NextRequest) {
         endDateTime: "When should this event end? Please provide a date and time.",
         due: "When is this due? Please provide a date.",
         content: "What content would you like to add?",
-        type: "What type is this? (e.g., Note, Meeting, Decision, Daily, Weekly)",
+        type: "What type is this? Options: Note, Idea, Research",
         status: "What's the task status? Please choose from: Next, Blocked, Doing, Verify, Done",
         priority: "What's the priority? Options: P0 - Critical (urgent), P1 - High, P2 - Medium (normal), P3 - Low"
       };

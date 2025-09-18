@@ -584,7 +584,7 @@ const ActionSchema = z.object({
 
 // Parsed action type with normalized action names
 type ParsedAction = {
-  action: 'createProject' | 'createTask' | 'logNote' | 'createContent' | 'updateTask' | 'updateProject' | 'updateContent' | 'updateJournal' | 'createCalendarEvent' | 'updateCalendarEvent' | 'deleteCalendarEvent' | 'listCalendarEvents';
+  action: 'createProject' | 'createTask' | 'logNote' | 'createContent' | 'updateTask' | 'updateProject' | 'updateContent' | 'updateJournal' | 'createCalendarEvent' | 'updateCalendarEvent' | 'deleteCalendarEvent' | 'listCalendarEvents' | 'draftJournal';
   params: Record<string, any>;
 };
 
@@ -988,6 +988,81 @@ export async function getProjects(): Promise<ActionResult<any[]>> {
   }
 }
 
+// Draft journal entry by summarizing/paraphrasing content using LLM
+async function draftJournal(params: Record<string, any>): Promise<ActionResult<{ draft: string; title?: string; type?: string }>> {
+  try {
+    // Validate required fields
+    if (!params.content || typeof params.content !== 'string') {
+      return {
+        success: false,
+        error: 'Content is required for drafting journal entry',
+        missingFields: ['content']
+      };
+    }
+
+    const { generateText } = await import('./llm');
+
+    const format = params.format || 'summary';
+    const type = params.type || 'Note';
+    const title = params.title || 'Journal Entry';
+
+    const systemPrompt = format === 'paraphrase'
+      ? `You are a thoughtful writing assistant that helps transform rough content into well-crafted, insightful journal entries.
+
+Your task is to rewrite the provided content with better wording, deeper insights, and clear structure while preserving all important information and personal meaning.
+
+Guidelines:
+- Enhance the language to be more eloquent and thoughtful
+- Add depth and insight where appropriate, drawing connections and implications
+- Structure the content logically with smooth transitions between ideas
+- Write in first person perspective to maintain personal voice
+- Expand on emotions, learnings, and reflections naturally
+- Use vivid, descriptive language that brings experiences to life
+- Organize thoughts into coherent paragraphs with clear flow
+- Don't worry about length - prioritize clarity and insight over brevity
+- Maintain authenticity while elevating the expression
+- Return ONLY the enhanced journal entry, no additional commentary`
+
+      : `You are a reflective writing assistant that creates thoughtful, well-structured journal summaries that capture key insights and learnings.
+
+Your task is to transform the provided content into a comprehensive, insightful journal entry that extracts deeper meaning and presents it clearly.
+
+Guidelines:
+- Extract and elaborate on key insights, learnings, and patterns
+- Structure content with clear themes and logical flow
+- Write in first person to maintain personal perspective
+- Add reflective commentary that draws connections to broader themes
+- Use thoughtful, articulate language that enhances understanding
+- Organize ideas into well-structured paragraphs with smooth transitions
+- Include emotional context and personal growth elements
+- Don't prioritize brevity - focus on depth, clarity, and insight
+- Highlight important realizations and their implications
+- Create a meaningful narrative that tells a complete story
+- Return ONLY the enhanced journal entry, no additional commentary`;
+
+    const userPrompt = `Please ${format === 'paraphrase' ? 'rewrite and enhance' : 'create an insightful summary of'} the following content for a thoughtful journal entry:
+
+Content: ${params.content}`;
+
+    const draft = await generateText(systemPrompt, userPrompt);
+
+    return {
+      success: true,
+      data: {
+        draft: draft.trim(),
+        title,
+        type
+      }
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to draft journal entry'
+    };
+  }
+}
+
 // Handle action by routing to appropriate builder and calling MCP
 export async function handleAction(parsedAction: ParsedAction): Promise<ActionResult<any>> {
   const { action, params } = parsedAction;
@@ -1037,6 +1112,8 @@ export async function handleAction(parsedAction: ParsedAction): Promise<ActionRe
         return await deleteCalendarEvent(params as any);
       case 'listCalendarEvents':
         return await listCalendarEvents(params as any);
+      case 'draftJournal':
+        return await draftJournal(params as any);
       default:
         return {
           success: false,

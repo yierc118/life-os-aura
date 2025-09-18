@@ -23,7 +23,7 @@ The user is asking for help with their previous request. They want to provide ad
 IMPORTANT: Keep the same action type - DO NOT change from createTask to logNote or createCalendarEvent etc.
 
 Return a valid JSON response in this exact format:
-{"action": "createProject|createTask|logNote|createContent|createCalendarEvent|updateCalendarEvent|deleteCalendarEvent|listCalendarEvents", "params": {"key": "value"}}
+{"action": "createProject|createTask|logNote|createContent|createCalendarEvent|updateCalendarEvent|deleteCalendarEvent|listCalendarEvents|draftJournal", "params": {"key": "value"}}
 
 Rules:
 - NO // comments in JSON
@@ -42,7 +42,7 @@ CRITICAL: You must respond with ONLY a valid JSON object. NO comments, NO explan
 
 Analyze the user's request and respond with a JSON object in this exact format:
 {
-  "action": "createProject|createTask|logNote|createContent|createCalendarEvent|updateCalendarEvent|deleteCalendarEvent|listCalendarEvents", 
+  "action": "createProject|createTask|logNote|createContent|createCalendarEvent|updateCalendarEvent|deleteCalendarEvent|listCalendarEvents|draftJournal",
   "params": {
     "key": "value"
   }
@@ -68,6 +68,7 @@ NOTION CREATE ACTIONS:
 - createTask: requires "name", "projectId" OR "projectName", "status", "priority", "due", optional: "shippable" (true/false), "notes"
 - logNote: requires "title", "type" (Note|Idea|Research), "content" (extract from user's message - everything after title/with content/etc.), optional: "date", "projectId" OR "projectName", "lifeDomainId", "actionItemIds" OR "taskNames". Always ask user if they want to link to projects or tasks.
 - createContent: requires "title", optional: "type", "tags", "projectId", "lifeDomainId", "date", "body"
+- draftJournal: requires "content" (text to summarize/paraphrase), optional: "title", "type" (Note|Idea|Research), "format" (summary|paraphrase)
 
 FIELD OPTIONS (must match existing Notion database selections):
 - Task priority: EXACTLY "P0 - Critical", "P1 - High", "P2 - Medium", "P3 - Low" - use these exact strings only
@@ -254,7 +255,7 @@ export async function POST(request: NextRequest) {
       const hasTaskLink = params.actionItemIds || params.taskNames;
 
       // Check if user is responding to a previous follow-up prompt
-      const isRespondingToFollowUp = recentHistory && recentHistory.some(msg =>
+      const isRespondingToFollowUp = recentHistory && recentHistory.some((msg: { role: string; content: string }) =>
         msg.role === 'assistant' &&
         msg.content.includes('Would you like to link this journal entry to any projects or tasks?')
       );
